@@ -19,6 +19,7 @@ import (
 	"github.com/nsqio/nsq/internal/version"
 )
 
+// nsqadmin的数据结构
 type NSQAdmin struct {
 	sync.RWMutex
 	opts                atomic.Value
@@ -29,23 +30,29 @@ type NSQAdmin struct {
 	httpClientTLSConfig *tls.Config
 }
 
+// nsqadmin的初始化工作
 func New(opts *Options) *NSQAdmin {
+	// 声明和初始化nsqadmin数据结构
 	n := &NSQAdmin{
 		notifications: make(chan *AdminAction),
 	}
+	// 原子操作存储nsqadmin的配置信息
 	n.swapOpts(opts)
 
+	// nsqdlookup和nsqd的http地址不能都为空
 	if len(opts.NSQDHTTPAddresses) == 0 && len(opts.NSQLookupdHTTPAddresses) == 0 {
 		n.logf("--nsqd-http-address or --lookupd-http-address required.")
 		os.Exit(1)
 	}
 
+	// nsqdlookup和nsqd的http地址不能都有配置信息，只需要配置nsqdlookup或者nsqd的http地址
 	if len(opts.NSQDHTTPAddresses) != 0 && len(opts.NSQLookupdHTTPAddresses) != 0 {
 		n.logf("use --nsqd-http-address or --lookupd-http-address not both")
 		os.Exit(1)
 	}
 
 	// verify that the supplied address is valid
+	// 验证http地址正确性的函数
 	verifyAddress := func(arg string, address string) *net.TCPAddr {
 		addr, err := net.ResolveTCPAddr("tcp", address)
 		if err != nil {
@@ -93,10 +100,12 @@ func New(opts *Options) *NSQAdmin {
 	}
 
 	// require that both the hostname and port be specified
+	// 验证配置的nsqdlookup的http地址的正确性
 	for _, address := range opts.NSQLookupdHTTPAddresses {
 		verifyAddress("--lookupd-http-address", address)
 	}
 
+	// 验证配置的nsqd的http地址的正确性
 	for _, address := range opts.NSQDHTTPAddresses {
 		verifyAddress("--nsqd-http-address", address)
 	}
@@ -110,11 +119,13 @@ func New(opts *Options) *NSQAdmin {
 		n.graphiteURL = url
 	}
 
+	// 打印当前nsqadmin的版本号
 	n.logf(version.String("nsqadmin"))
 
 	return n
 }
 
+// nsqadmin的日志打印函数
 func (n *NSQAdmin) logf(f string, args ...interface{}) {
 	if n.getOpts().Logger == nil {
 		return
@@ -122,14 +133,17 @@ func (n *NSQAdmin) logf(f string, args ...interface{}) {
 	n.getOpts().Logger.Output(2, fmt.Sprintf(f, args...))
 }
 
+// 原子操作获得nsqadmin的配置信息
 func (n *NSQAdmin) getOpts() *Options {
 	return n.opts.Load().(*Options)
 }
 
+// 院子操作存储nsqadmin的配置信息
 func (n *NSQAdmin) swapOpts(opts *Options) {
 	n.opts.Store(opts)
 }
 
+// 获得nsqadmin监听的http地址
 func (n *NSQAdmin) RealHTTPAddr() *net.TCPAddr {
 	n.RLock()
 	defer n.RUnlock()
@@ -155,15 +169,19 @@ func (n *NSQAdmin) handleAdminActions() {
 	}
 }
 
+// nsqadmin的主运行函数
 func (n *NSQAdmin) Main() {
+	// 监听配置的http地址
 	httpListener, err := net.Listen("tcp", n.getOpts().HTTPAddress)
 	if err != nil {
 		n.logf("FATAL: listen (%s) failed - %s", n.getOpts().HTTPAddress, err)
 		os.Exit(1)
 	}
+	// 存储http监听句柄
 	n.Lock()
 	n.httpListener = httpListener
 	n.Unlock()
+	// 初始化http数据结构
 	httpServer := NewHTTPServer(&Context{n})
 	n.waitGroup.Wrap(func() {
 		http_api.Serve(n.httpListener, http_api.CompressHandler(httpServer), "HTTP", n.getOpts().Logger)
@@ -171,6 +189,7 @@ func (n *NSQAdmin) Main() {
 	n.waitGroup.Wrap(func() { n.handleAdminActions() })
 }
 
+// nsqadmin的退出函数
 func (n *NSQAdmin) Exit() {
 	n.httpListener.Close()
 	close(n.notifications)

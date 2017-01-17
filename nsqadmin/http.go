@@ -153,6 +153,7 @@ func (s *httpServer) staticAssetHandler(w http.ResponseWriter, req *http.Request
 	assetName := ps.ByName("asset")
 
 	asset, err := Asset(assetName)
+	s.ctx.nsqadmin.logf("staticAssetHandler: %s", assetName)
 	if err != nil {
 		return nil, http_api.Err{404, "NOT_FOUND"}
 	}
